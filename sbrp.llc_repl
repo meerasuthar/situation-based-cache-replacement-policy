@@ -1,0 +1,157 @@
+#include "cache.h"
+
+#define maxRRPV 3
+uint64_t freq[LLC_SET][LLC_WAY]; 
+uint32_t rrpv[LLC_SET][LLC_WAY];
+
+uint64_t miss_counter;
+uint64_t time_counter;
+
+// 0 : LRU
+// 1 : SRRIP
+// 2 : LFU
+uint32_t algorithm;
+
+
+// initialize replacement state
+void CACHE::llc_initialize_replacement()
+{
+    for (int i=0; i<LLC_SET; i++) {
+        for (int j=0; j<LLC_WAY; j++) {
+            rrpv[i][j] = maxRRPV;
+            freq[i][j] = 0;
+        }
+    }
+    //default algorithm is LRU
+    algorithm = 0;
+    miss_counter = 0;
+    time_counter = 0;
+}
+
+// find replacement victim
+uint32_t CACHE::llc_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
+{
+    //if consicutive misses are greater than certain value
+    switch(algorithm) {
+        case 0:
+            //LRU
+            return lru_victim(cpu, instr_id, set, current_set, ip, full_addr, type); 
+        case 1:
+            //SRRIP
+            while (1)
+            {
+                for (int i=0; i<LLC_WAY; i++)
+                    if (rrpv[set][i] == maxRRPV)
+                        return i;
+
+                for (int i=0; i<LLC_WAY; i++)
+                    rrpv[set][i]++;
+            }
+            break;
+        case 2:
+            //LFU
+            uint64_t min_freq = UINT64_MAX;
+            uint32_t min_way = -1;
+            for (int i=0; i<LLC_WAY; i++) {
+                if (freq[set][i] <  min_freq) {
+                    min_freq = freq[set][i];
+                    min_way = i;
+                }
+            }
+            if (min_way >= 0 && min_way < LLC_WAY) {
+                return min_way;
+            } else {
+                return 0;
+            }
+            break;
+    }
+    
+    
+    // WE SHOULD NOT REACH HERE
+    assert(0);
+    return 0;           
+}
+
+// called on every cache hit and cache fill
+void CACHE::llc_update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
+{
+    string TYPE_NAME;
+    if (type == LOAD)
+        TYPE_NAME = "LOAD";
+    else if (type == RFO)
+        TYPE_NAME = "RFO";
+    else if (type == PREFETCH)
+        TYPE_NAME = "PF";
+    else if (type == WRITEBACK)
+        TYPE_NAME = "WB";
+    else
+        assert(0);
+
+    if (hit)
+        TYPE_NAME += "_HIT";
+    else
+        TYPE_NAME += "_MISS";
+
+    if ((type == WRITEBACK) && ip)
+        assert(0);
+
+    // uncomment this line to see the LLC accesses
+    // cout << "CPU: " << cpu << "  LLC " << setw(9) << TYPE_NAME << " set: " << setw(5) << set << " way: " << setw(2) << way;
+    // cout << hex << " paddr: " << setw(12) << paddr << " ip: " << setw(8) << ip << " victim_addr: " << victim_addr << dec << endl;
+
+    //We need to update values associated with all the algorithms 
+
+    //LRU related updateds
+
+    if (type != WRITEBACK || (type == WRITEBACK && !hit)) {
+        lru_update(set, way);       
+    }
+    if (hit) {
+        //SRRIP update
+        miss_counter = 0;
+        rrpv[set][way] = 0;
+        //LFU update
+        freq[set][way]++; 
+        
+    } else {
+        //Increase the continuous miss counter
+        miss_counter++;
+        //SRRIP related update
+        rrpv[set][way] = maxRRPV-1;
+        //LFU update
+        freq[set][way] = 1;  
+
+        //Now switch between algorithms if required 
+        if (algorithm == 0) {
+            //consicutive misses - Thrashing 
+            if (miss_counter == 25) {
+                miss_counter = 0;
+                algorithm = 1;
+            }
+        } else if (algorithm == 1) {
+            //SRRIP is thrash resistent, so we have kept the value 
+            //for consicutive miss counter higher than LRU
+            if (miss_counter == 50) {
+                miss_counter = 0;
+                algorithm = 2;
+                time_counter = 0;
+            }
+        }      
+    }
+    if (algorithm == 2) {
+        //we need to remove stage blocks in certain interval
+        //if currently executing algorithm is LFU
+        time_counter++;
+        if (time_counter == 50) {
+            algorithm = 0;
+            miss_counter = 0;
+            time_counter = 0;
+        }           
+    }    
+}
+
+// use this function to print out your own stats at the end of simulation
+void CACHE::llc_replacement_final_stats()
+{
+
+}
