@@ -21,5 +21,10 @@ Then execute the following command (From ChampSim folder):
 <trace> represents a file from dpc3_traces folder. Select one file at a time to execute.
 This will generate a file in a results_10M folder. In all the result files in this folder, the lines with LLC* are of interest to us.
 
-In the report, we have included the results we got after running the traces for 7 of 20 traces of dpc3_traces folder. 
+In the report, we have included the results we got after running the traces for 7 of 20 traces of dpc3_traces folder.
+  
+  
+# Presented by
+ms12418@nyu.edu – Meera Suthar
+hp2178@nyu.edu - Harsh Patel
 
